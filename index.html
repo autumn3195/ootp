@@ -86,6 +86,8 @@
 .standings-team{display:flex;align-items:center;gap:5px;white-space:nowrap;min-width:0}
 .standings-logo{width:21px;height:21px;object-fit:contain;flex:none}
 .standings-name{font-size:12px;font-weight:600}
+#standingsFeedback{margin-top:5px;min-height:14px;font-size:11px}
+.copy-dialog{background:#151e2d;color:#e8edf5;border:1px solid #35435b;border-radius:12px;width:min(700px,90vw);padding:20px}.copy-dialog::backdrop{background:#0009}.copy-dialog textarea{margin:12px 0;min-height:260px}
 </style>
 </head>
 <body><div class="wrap">
@@ -94,7 +96,7 @@
 <main class="layout">
 <section class="panel pane"><div class="pane-head"><h2 id="articleListTitle">9월 기사 목록</h2><span class="pill" id="articleCount">0건</span></div><div class="article-scroll" id="articleList"></div></section>
 <section class="panel pane"><div class="calendar-header"><button class="circle" id="prevMonth" aria-label="이전 달">‹</button><strong id="monthTitle">2025년 9월</strong><button class="circle" id="nextMonth" aria-label="다음 달">›</button></div><div class="week"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div><div class="days" id="calendar"></div><div class="calendar-note">파란 날짜 숫자는 기사 등록일입니다. 경기의 홈·어웨이와 점수는 플레이 구단 기준입니다.</div></section>
-<section class="panel pane standings-pane"><div class="pane-head"><h2>KBO 순위표</h2><button id="refreshStandings" type="button" title="입력된 성적으로 순위 정렬">↻ 새로고침</button></div><table class="standings"><thead><tr><th>순위</th><th>구단</th><th>경기</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>승차</th></tr></thead><tbody id="standings"></tbody></table><p class="calendar-note">새로고침을 누르면 승률순으로 정렬됩니다. 입력 순서: 승·무·패. 승률 = 승 ÷ (승 + 패). 성적은 월별로 저장됩니다.</p></section>
+<section class="panel pane standings-pane"><div class="pane-head"><h2>KBO 순위표</h2><div class="toolbar"><button id="copyStandings" type="button">순위 복사</button><button id="refreshStandings" type="button" title="입력된 성적으로 순위 정렬">↻ 새로고침</button></div></div><table class="standings"><thead><tr><th>순위</th><th>구단</th><th>경기</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>승차</th></tr></thead><tbody id="standings"></tbody></table><p class="calendar-note">새로고침을 누르면 승률순으로 정렬됩니다. 입력 순서: 승·무·패. 승률 = 승 ÷ (승 + 패). 월을 바꿔도 현재 순위표가 유지됩니다.</p><div id="standingsFeedback" class="status" role="status"></div></section>
 </main>
 </div>
 <section class="panel game-area" id="gameEditor">
@@ -111,11 +113,12 @@
 <section class="panel edit-area" id="editor"><div class="edit-title"><h2 id="editorHeading">2025년 9월 1일 · 기사 작성</h2><div class="toolbar"><span class="pill" id="dayArticleCount">0건</span><button id="newArticle">+ 새 기사</button></div></div><div class="edit-grid"><div><label for="headline">기사 제목</label><input id="headline" placeholder="예: 롯데, 차기 감독 선임 발표"></div><div><label for="body">기사 본문</label><textarea id="body" rows="13" placeholder="가상의 스포츠 기사 내용을 입력하세요..."></textarea></div></div><div class="editor-actions"><span class="status" id="saveStatus">변경 내용은 자동 저장됩니다.</span><div><button id="deleteArticle" class="danger" disabled>기사 삭제</button><button id="saveArticle" class="primary">기사 저장</button></div></div></section>
 <div class="footer"><span>이 브라우저에 자동 저장됩니다. 중요한 기록은 JSON 백업을 권장합니다.</span><div class="toolbar"><button id="exportData">백업 내보내기</button><label class="btn file-load" style="margin:0">백업 불러오기<input id="importData" type="file" accept=".json,application/json" aria-label="백업 파일 선택"></label></div></div>
 </div>
+<dialog id="standingsCopyDialog" class="copy-dialog"><strong>현재 순위표</strong><p class="muted">아래 텍스트를 선택해 Ctrl+C로 복사하세요.</p><textarea id="standingsCopyText" readonly aria-label="현재 순위표 텍스트"></textarea><button id="closeStandingsCopy">닫기</button></dialog>
 <script>
 (()=>{'use strict';
 const KEY='ootp-chronicle-draft-v1',teams=['KIA 타이거즈','삼성 라이온즈','LG 트윈스','두산 베어스','KT 위즈','SSG 랜더스','롯데 자이언츠','한화 이글스','NC 다이노스','키움 히어로즈'];
 const $=id=>document.getElementById(id);const pad=n=>String(n).padStart(2,'0');const dateKey=(y,m,d)=>`${y}-${pad(m+1)}-${pad(d)}`;const monthKey=(y,m)=>`${y}-${pad(m+1)}`;
-const emptyData=()=>({team:'롯데 자이언츠',manager:'',articles:[],standings:{},games:{}});let data=emptyData();try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&Array.isArray(v.articles)){data={...data,...v};}}catch(e){console.warn('저장 파일을 읽을 수 없습니다.',e)}
+const emptyData=()=>({team:'롯데 자이언츠',manager:'',articles:[],standings:{},currentStandings:null,games:{}});let data=emptyData();try{const v=JSON.parse(localStorage.getItem(KEY));if(v&&Array.isArray(v.articles)){data={...data,...v};}}catch(e){console.warn('저장 파일을 읽을 수 없습니다.',e)}
 if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.games={};
 // Remove only the automatically generated demo; preserve user-entered results.
 for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}
@@ -133,6 +136,7 @@ function repairReportedStandings(){
  return true;
 }
 repairReportedStandings();
+ensureCurrentStandings();
 let year=2025,month=8,day=1,currentId=null,dirty=false;let idCounter=0;
 const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(data));$('saveStatus').textContent='저장됨 · 이 브라우저에 보관';}catch(e){$('saveStatus').textContent='자동 저장 실패 · 백업 내보내기를 이용하세요';}};
 const sortedMonthArticles=()=>data.articles.filter(a=>typeof a.date==='string'&&a.date.startsWith(monthKey(year,month)+'-')).sort((a,b)=>a.date.localeCompare(b.date)||String(a.created||'').localeCompare(String(b.created||'')));
@@ -161,10 +165,40 @@ function sortStandings(rows){
   return bw*ag-aw*bg;
  });
 }
+function ensureCurrentStandings(){
+ if(Array.isArray(data.currentStandings))return data.currentStandings;
+ const history=data.standings&&typeof data.standings==='object'?data.standings:{};
+ const keys=Object.keys(history).filter(k=>Array.isArray(history[k])).sort().reverse();
+ const withResults=keys.find(k=>history[k].some(r=>recordNumber(r.w)+recordNumber(r.d)+recordNumber(r.l)>0));
+ const withInputs=keys.find(k=>history[k].some(r=>['w','d','l'].some(f=>r[f]!==''&&r[f]!=null)));
+ const source=history[withResults||withInputs||keys[0]];
+ data.currentStandings=source?JSON.parse(JSON.stringify(source)):teams.map(team=>({team,w:'',d:'',l:''}));
+ return data.currentStandings;
+}
 function refreshStandings(){
- const key=monthKey(year,month);
- data.standings[key]=sortStandings(data.standings[key]||[]);
+ data.currentStandings=sortStandings(ensureCurrentStandings());
  renderStandings();persist();
+ $('standingsFeedback').textContent='현재 성적으로 순위를 갱신했습니다.';
+}
+function standingsText(){
+ const rows=ensureCurrentStandings(),metrics=standingsMetrics(rows);
+ return ['KBO 현재 순위','순위\t구단\t경기\t승\t무\t패\t승률\t승차',...rows.map((r,i)=>{
+  const w=recordNumber(r.w),d=recordNumber(r.d),l=recordNumber(r.l);
+  return [i+1,String(r.team||'').split(' ')[0],w+d+l,w,d,l,metrics[i].pct,metrics[i].gb].join('\t');
+ })].join('\n');
+}
+async function copyStandings(){
+ const text=standingsText();let copied=false;
+ try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);copied=true}}catch(e){}
+ if(!copied){
+  const temp=document.createElement('textarea');temp.value=text;temp.setAttribute('aria-label','복사할 순위표');temp.style.position='fixed';temp.style.left='-10000px';document.body.append(temp);
+  try{temp.focus();temp.select();copied=document.execCommand('copy')}catch(e){}finally{temp.remove()}
+ }
+ if(copied){$('standingsFeedback').textContent='현재 순위표를 복사했습니다.'}
+ else{
+  $('standingsCopyText').value=text;$('standingsCopyDialog').showModal();$('standingsCopyText').focus();$('standingsCopyText').select();
+  $('standingsFeedback').textContent='열린 창의 텍스트를 복사하세요.';
+ }
 }
 function standingsMetrics(rows){
  const records=rows.map(r=>{const w=recordNumber(r.w),l=recordNumber(r.l);return {w,l,games:w+l,pct:w+l?w/(w+l):null}});
@@ -173,19 +207,19 @@ function standingsMetrics(rows){
  return records.map(r=>({pct:r.pct===null?'—':r.pct.toFixed(3),gb:!leader||!r.games?'—':((leader.w-r.w+r.l-leader.l)/2).toFixed(1)}));
 }
 function updateStandingsMetrics(){
- const metrics=standingsMetrics(data.standings[monthKey(year,month)]);
+ const rows=ensureCurrentStandings(),metrics=standingsMetrics(rows);
  $('standings').querySelectorAll('tr').forEach((tr,i)=>{
-  const record=data.standings[monthKey(year,month)][i];
+  const record=rows[i];
   tr.querySelector('[data-stat="games"]').textContent=recordNumber(record.w)+recordNumber(record.l)+recordNumber(record.d);
   tr.querySelector('[data-stat="pct"]').textContent=metrics[i].pct;
   tr.querySelector('[data-stat="gb"]').textContent=metrics[i].gb;
  });
 }
 function renderStandings(){
- const key=monthKey(year,month);
- if(!Array.isArray(data.standings[key]))data.standings[key]=teams.map(t=>({team:t,w:'',l:'',d:''}));
+ const rows=ensureCurrentStandings();
  const tbody=$('standings');tbody.replaceChildren();
- data.standings[key].forEach((r,i)=>{
+ $('standingsFeedback').textContent='';
+ rows.forEach((r,i)=>{
   const tr=document.createElement('tr'),rank=document.createElement('td');rank.textContent=i+1;tr.append(rank);
   for(const field of ['team','w','d','l']){
    const td=document.createElement('td');
@@ -274,9 +308,11 @@ for(const id of ['headline','body'])$(id).addEventListener('input',()=>{dirty=tr
 $('prevMonth').addEventListener('click',()=>moveMonth(-1));$('nextMonth').addEventListener('click',()=>moveMonth(1));$('newArticle').addEventListener('click',()=>{flush();resetEditor();$('headline').focus()});$('saveArticle').addEventListener('click',()=>saveArticle());
 $('deleteArticle').addEventListener('click',()=>{if(!currentId||!confirm('이 기사를 삭제하시겠습니까?'))return;data.articles=data.articles.filter(a=>a.id!==currentId);resetEditor();persist();renderAll()});
 $('exportData').addEventListener('click',()=>{flush();const blob=new Blob([JSON.stringify({format:'ootp-chronicle',version:1,exportedAt:new Date().toISOString(),data},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`ootp-chronicle-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
-$('importData').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const raw=JSON.parse(await f.text());const imported=raw.data??raw;if(!Array.isArray(imported.articles)||!imported.standings||typeof imported.standings!=='object')throw Error('형식 오류');if(!confirm('현재 모든 기록을 백업 파일 내용으로 교체하시겠습니까?'))return;data={...emptyData(),...imported};if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.games={};for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}delete data.gameResultDemoAdded;repairReportedStandings();currentId=null;dirty=false;$('team').value=teams.includes(data.team)?data.team:teams[0];$('manager').value=data.manager||'';resetEditor();persist();renderAll()}catch(err){alert('백업 파일을 읽을 수 없습니다: '+err.message)}finally{e.target.value=''}});
+$('importData').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const raw=JSON.parse(await f.text());const imported=raw.data??raw;if(!Array.isArray(imported.articles)||!imported.standings||typeof imported.standings!=='object')throw Error('형식 오류');if(!confirm('현재 모든 기록을 백업 파일 내용으로 교체하시겠습니까?'))return;data={...emptyData(),...imported};if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.games={};for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}delete data.gameResultDemoAdded;repairReportedStandings();ensureCurrentStandings();currentId=null;dirty=false;$('team').value=teams.includes(data.team)?data.team:teams[0];$('manager').value=data.manager||'';resetEditor();persist();renderAll()}catch(err){alert('백업 파일을 읽을 수 없습니다: '+err.message)}finally{e.target.value=''}});
 for(const id of ['gameVenue','opponentTeam'])$(id).addEventListener('change',()=>saveGame(true));
 for(const id of ['ourScore','opponentScore'])$(id).addEventListener('input',()=>saveGame(true));
+$('copyStandings').addEventListener('click',copyStandings);
+$('closeStandingsCopy').addEventListener('click',()=>$('standingsCopyDialog').close());
 $('refreshStandings').addEventListener('click',refreshStandings);
 $('saveGame').addEventListener('click',()=>saveGame());
 $('deleteGame').addEventListener('click',()=>{
