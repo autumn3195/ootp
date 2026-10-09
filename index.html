@@ -94,7 +94,7 @@
 <main class="layout">
 <section class="panel pane"><div class="pane-head"><h2 id="articleListTitle">9월 기사 목록</h2><span class="pill" id="articleCount">0건</span></div><div class="article-scroll" id="articleList"></div></section>
 <section class="panel pane"><div class="calendar-header"><button class="circle" id="prevMonth" aria-label="이전 달">‹</button><strong id="monthTitle">2025년 9월</strong><button class="circle" id="nextMonth" aria-label="다음 달">›</button></div><div class="week"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div><div class="days" id="calendar"></div><div class="calendar-note">파란 날짜 숫자는 기사 등록일입니다. 경기의 홈·어웨이와 점수는 플레이 구단 기준입니다.</div></section>
-<section class="panel pane standings-pane"><div class="pane-head"><h2>KBO 순위표</h2><button id="refreshStandings" type="button" title="입력된 성적으로 순위 정렬">↻ 새로고침</button></div><table class="standings"><thead><tr><th>순위</th><th>구단</th><th>경기</th><th>승</th><th>패</th><th>무</th><th>승률</th><th>승차</th></tr></thead><tbody id="standings"></tbody></table><p class="calendar-note">새로고침을 누르면 승률순으로 정렬됩니다. 무승부는 승률에서 제외하며 성적은 월별로 저장됩니다.</p></section>
+<section class="panel pane standings-pane"><div class="pane-head"><h2>KBO 순위표</h2><button id="refreshStandings" type="button" title="입력된 성적으로 순위 정렬">↻ 새로고침</button></div><table class="standings"><thead><tr><th>순위</th><th>구단</th><th>경기</th><th>승</th><th>무</th><th>패</th><th>승률</th><th>승차</th></tr></thead><tbody id="standings"></tbody></table><p class="calendar-note">새로고침을 누르면 승률순으로 정렬됩니다. 입력 순서: 승·무·패. 승률 = 승 ÷ (승 + 패). 성적은 월별로 저장됩니다.</p></section>
 </main>
 </div>
 <section class="panel game-area" id="gameEditor">
@@ -120,6 +120,19 @@ if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.gam
 // Remove only the automatically generated demo; preserve user-entered results.
 for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}
 delete data.gameResultDemoAdded;
+function repairReportedStandings(){
+ const rows=data.standings?.['2025-09'];
+ if(!Array.isArray(rows)||rows.length!==10)return false;
+ const lotte=rows.find(r=>r.team==='롯데 자이언츠');
+ if(!lotte||recordNumber(lotte.w)!==66||recordNumber(lotte.l)!==6||recordNumber(lotte.d)!==72)return false;
+ const swapped=rows.every(r=>recordNumber(r.w)+recordNumber(r.l)+recordNumber(r.d)===144&&recordNumber(r.l)<=15&&recordNumber(r.d)>=30);
+ if(!swapped)return false;
+ if(!data.standingsBeforeOrderRepair)data.standingsBeforeOrderRepair=JSON.parse(JSON.stringify(rows));
+ for(const row of rows){const oldLoss=row.l;row.l=row.d;row.d=oldLoss}
+ data.standings['2025-09']=sortStandings(rows);
+ return true;
+}
+repairReportedStandings();
 let year=2025,month=8,day=1,currentId=null,dirty=false;let idCounter=0;
 const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(data));$('saveStatus').textContent='저장됨 · 이 브라우저에 보관';}catch(e){$('saveStatus').textContent='자동 저장 실패 · 백업 내보내기를 이용하세요';}};
 const sortedMonthArticles=()=>data.articles.filter(a=>typeof a.date==='string'&&a.date.startsWith(monthKey(year,month)+'-')).sort((a,b)=>a.date.localeCompare(b.date)||String(a.created||'').localeCompare(String(b.created||'')));
@@ -174,7 +187,7 @@ function renderStandings(){
  const tbody=$('standings');tbody.replaceChildren();
  data.standings[key].forEach((r,i)=>{
   const tr=document.createElement('tr'),rank=document.createElement('td');rank.textContent=i+1;tr.append(rank);
-  for(const field of ['team','w','l','d']){
+  for(const field of ['team','w','d','l']){
    const td=document.createElement('td');
    if(field==='team'){
     const shortName=String(r.team||'').split(' ')[0];
@@ -261,7 +274,7 @@ for(const id of ['headline','body'])$(id).addEventListener('input',()=>{dirty=tr
 $('prevMonth').addEventListener('click',()=>moveMonth(-1));$('nextMonth').addEventListener('click',()=>moveMonth(1));$('newArticle').addEventListener('click',()=>{flush();resetEditor();$('headline').focus()});$('saveArticle').addEventListener('click',()=>saveArticle());
 $('deleteArticle').addEventListener('click',()=>{if(!currentId||!confirm('이 기사를 삭제하시겠습니까?'))return;data.articles=data.articles.filter(a=>a.id!==currentId);resetEditor();persist();renderAll()});
 $('exportData').addEventListener('click',()=>{flush();const blob=new Blob([JSON.stringify({format:'ootp-chronicle',version:1,exportedAt:new Date().toISOString(),data},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`ootp-chronicle-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
-$('importData').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const raw=JSON.parse(await f.text());const imported=raw.data??raw;if(!Array.isArray(imported.articles)||!imported.standings||typeof imported.standings!=='object')throw Error('형식 오류');if(!confirm('현재 모든 기록을 백업 파일 내용으로 교체하시겠습니까?'))return;data={...emptyData(),...imported};if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.games={};for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}delete data.gameResultDemoAdded;currentId=null;dirty=false;$('team').value=teams.includes(data.team)?data.team:teams[0];$('manager').value=data.manager||'';resetEditor();persist();renderAll()}catch(err){alert('백업 파일을 읽을 수 없습니다: '+err.message)}finally{e.target.value=''}});
+$('importData').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const raw=JSON.parse(await f.text());const imported=raw.data??raw;if(!Array.isArray(imported.articles)||!imported.standings||typeof imported.standings!=='object')throw Error('형식 오류');if(!confirm('현재 모든 기록을 백업 파일 내용으로 교체하시겠습니까?'))return;data={...emptyData(),...imported};if(!data.games||typeof data.games!=='object'||Array.isArray(data.games))data.games={};for(const date of Object.keys(data.games)){if(data.games[date]?.demo)delete data.games[date]}delete data.gameResultDemoAdded;repairReportedStandings();currentId=null;dirty=false;$('team').value=teams.includes(data.team)?data.team:teams[0];$('manager').value=data.manager||'';resetEditor();persist();renderAll()}catch(err){alert('백업 파일을 읽을 수 없습니다: '+err.message)}finally{e.target.value=''}});
 for(const id of ['gameVenue','opponentTeam'])$(id).addEventListener('change',()=>saveGame(true));
 for(const id of ['ourScore','opponentScore'])$(id).addEventListener('input',()=>saveGame(true));
 $('refreshStandings').addEventListener('click',refreshStandings);
