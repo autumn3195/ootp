@@ -325,6 +325,7 @@ body.reader-open{overflow:hidden}
 @media(max-width:850px){.writing-workspace{grid-template-columns:300px minmax(0,1fr);gap:10px}.writing-workspace .edit-title{flex-wrap:wrap}.writing-workspace .edit-title .toolbar{margin-left:auto}.writing-workspace h2{font-size:14px}.writing-workspace .edit-area .editor-actions{flex-direction:column;align-items:stretch}.writing-workspace .edit-area .editor-actions>div{justify-content:flex-end}}
 @media(max-width:650px){.writing-workspace{grid-template-columns:minmax(0,1fr)}.writing-workspace .match-settings{grid-template-columns:minmax(0,1fr) 100px minmax(0,1fr)}.writing-workspace .match-settings>div:first-child{grid-column:auto}.writing-workspace .game-area .editor-actions{flex-direction:row;align-items:center}.writing-workspace .match-scoreboard{max-width:400px}.writing-workspace #body{min-height:190px}.writing-workspace .edit-title{flex-wrap:wrap}}
 
+.ig-view-edit{display:grid;gap:14px}.ig-view-edit textarea{min-height:180px;line-height:1.85;resize:vertical}.ig-edit-actions{display:flex;justify-content:flex-end;gap:8px}.ig-view-actions{display:flex;gap:8px;margin-top:auto}.ig-view-actions #igDeleteMedia{margin-top:0;align-self:auto}#igViewerEditStatus:empty{display:none}
 </style>
 </head>
 <body><div class="wrap">
@@ -397,7 +398,7 @@ body.reader-open{overflow:hidden}
 </dialog>
 <dialog id="igMediaViewer" class="ig-media-viewer">
 <div class="ig-view-head"><div class="ig-view-account"><img id="igViewerAvatar" alt=""><strong id="igViewerUsername"></strong></div><button id="igCloseViewer" type="button" aria-label="닫기">×</button></div>
-<div class="ig-view-layout"><div class="ig-view-image-wrap"><img id="igViewerImage" alt="게시물 사진"></div><div class="ig-view-details"><p id="igViewerCaption"></p><time id="igViewerDate"></time><button id="igDeleteMedia" class="danger" type="button">삭제</button></div></div>
+<div class="ig-view-layout"><div class="ig-view-image-wrap"><img id="igViewerImage" alt="게시물 사진"></div><div class="ig-view-details"><p id="igViewerCaption"></p><time id="igViewerDate"></time><div id="igViewerEditForm" class="ig-view-edit" hidden><div><label for="igViewerPhotoInput">사진 교체</label><input id="igViewerPhotoInput" type="file" accept="image/*"><span class="status">새 사진을 선택하면 왼쪽에 미리 표시됩니다.</span></div><div><label for="igViewerDateInput">날짜</label><input id="igViewerDateInput" type="date"></div><div><label for="igViewerCaptionInput">게시물 내용</label><textarea id="igViewerCaptionInput" rows="7"></textarea></div><div class="ig-edit-actions"><button id="igCancelViewerEdit" type="button">취소</button><button id="igSaveViewerEdit" class="primary" type="button">수정 저장</button></div></div><span id="igViewerEditStatus" class="status" role="status" aria-live="polite"></span><div class="ig-view-actions"><button id="igEditMedia" type="button">수정</button><button id="igDeleteMedia" class="danger" type="button">삭제</button></div></div></div>
 </dialog>
 <script>
 (()=>{'use strict';
@@ -702,6 +703,7 @@ async function instagramImage(file,preserveOriginal=false){
  }finally{URL.revokeObjectURL(url)}
 }
 let instagramViewing=null;
+let instagramEditPhotoUrl=null;
 function addInstagramMedia(){
  $('igUploadHeading').textContent='게시물 추가';
  $('igCaptionLabel').textContent='게시물 내용';
@@ -714,8 +716,55 @@ function viewInstagramMedia(kind,id){
  $('igViewerAvatar').src=p.avatar;$('igViewerUsername').textContent=p.username;
  $('igViewerImage').src=item.image;$('igViewerImage').alt=item.caption||'사진';
  $('igViewerCaption').textContent=item.caption||'';$('igViewerDate').textContent=item.date||'';
- $('igMediaViewer').showModal();
+ setInstagramViewerEditing(false);$('igViewerEditStatus').textContent='';
+ if(!$('igMediaViewer').open)$('igMediaViewer').showModal();
 }
+function resetInstagramViewerPhoto(){
+ if(instagramEditPhotoUrl){URL.revokeObjectURL(instagramEditPhotoUrl);instagramEditPhotoUrl=null;}
+ $('igViewerPhotoInput').value='';
+ if(instagramViewing){const {kind,id}=instagramViewing,item=instagramData()[kind].find(x=>x.id===id);if(item)$('igViewerImage').src=item.image;}
+}
+function setInstagramViewerEditing(editing){
+ if(!editing)resetInstagramViewerPhoto();
+ $('igViewerEditForm').hidden=!editing;
+ $('igViewerCaption').hidden=editing;$('igViewerDate').hidden=editing;
+ $('igEditMedia').hidden=editing;$('igDeleteMedia').hidden=editing;
+}
+function editInstagramViewer(){
+ if(!instagramViewing)return;
+ const {kind,id}=instagramViewing,item=instagramData()[kind].find(x=>x.id===id);
+ if(!item)return;
+ resetInstagramViewerPhoto();
+ $('igViewerDateInput').value=item.date||'';$('igViewerCaptionInput').value=item.caption||'';
+ $('igViewerEditStatus').textContent='';setInstagramViewerEditing(true);$('igViewerCaptionInput').focus();
+}
+async function saveInstagramViewerEdit(){
+ if(!instagramViewing||$('igSaveViewerEdit').disabled)return;
+ if(!$('igViewerDateInput').checkValidity()){$('igViewerDateInput').reportValidity();return;}
+ const {kind,id}=instagramViewing;
+ if(!instagramData()[kind].some(x=>x.id===id)){$('igViewerEditStatus').textContent='게시물을 찾을 수 없습니다.';return;}
+ const date=$('igViewerDateInput').value,caption=$('igViewerCaptionInput').value.trim(),file=$('igViewerPhotoInput').files?.[0];
+ const button=$('igSaveViewerEdit');button.disabled=true;$('igCancelViewerEdit').disabled=true;
+ try{
+  const image=file?await instagramImage(file):null;
+  if(!instagramData()[kind].some(x=>x.id===id))throw Error('게시물을 찾을 수 없습니다.');
+  if(saveInstagramMutation(ig=>{const item=ig[kind].find(x=>x.id===id);item.date=date;item.caption=caption;if(image!==null)item.image=image;})){
+   if(instagramViewing?.kind===kind&&instagramViewing?.id===id&&$('igMediaViewer').open){viewInstagramMedia(kind,id);$('igViewerEditStatus').textContent='수정 내용이 저장되었습니다.';}
+  }else $('igViewerEditStatus').textContent='저장하지 못했습니다. 사진 용량을 줄이거나 다시 시도해 주세요.';
+ }catch(e){$('igViewerEditStatus').textContent=e.message||'사진을 읽을 수 없습니다.';}
+ finally{button.disabled=false;$('igCancelViewerEdit').disabled=false;}
+}
+$('igViewerPhotoInput').addEventListener('change',()=>{
+ if(instagramEditPhotoUrl){URL.revokeObjectURL(instagramEditPhotoUrl);instagramEditPhotoUrl=null;}
+ const file=$('igViewerPhotoInput').files?.[0];
+ if(!file){resetInstagramViewerPhoto();return;}
+ if(!file.type.startsWith('image/')||file.size>20*1024*1024){resetInstagramViewerPhoto();$('igViewerEditStatus').textContent='20MB 이하의 사진 파일을 선택하세요.';return;}
+ instagramEditPhotoUrl=URL.createObjectURL(file);$('igViewerImage').src=instagramEditPhotoUrl;$('igViewerEditStatus').textContent='';
+});
+$('igMediaViewer').addEventListener('close',resetInstagramViewerPhoto);
+$('igEditMedia').addEventListener('click',editInstagramViewer);
+$('igSaveViewerEdit').addEventListener('click',saveInstagramViewerEdit);
+$('igCancelViewerEdit').addEventListener('click',()=>{setInstagramViewerEditing(false);$('igViewerEditStatus').textContent='';});
 $('igAddPost').addEventListener('click',()=>addInstagramMedia());
 $('igCloseUpload').addEventListener('click',()=>$('igUploadDialog').close());
 $('igCloseViewer').addEventListener('click',()=>$('igMediaViewer').close());
